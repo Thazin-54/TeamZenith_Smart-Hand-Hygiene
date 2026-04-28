@@ -130,3 +130,7 @@ git clone https://github.com/[your-username]/HAI-Hygiene-Tracker.git
 ## 🏆 Built At
 TechFusion 2.0 Hackathon | Dayananda Sagar Academy of Technology & Management
 April 28–29, 2025
+
+
+
+Simulation Link :- https://htmlpreview.github.io/?https://github.com/Thazin-54/TeamZenith_Smart-Hand-Hygiene/blob/main/simulation.html
