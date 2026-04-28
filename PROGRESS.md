@@ -3,7 +3,7 @@
 # 🏥 Smart Hospital Hand Hygiene Compliance Tracker
 
 > IoT-based real-time hand hygiene monitoring system for hospital bedsides  
-> Built for TechFusion 2.0 Hackathon | Team: [Your Team Name]
+> Built for TechFusion 2.0 Hackathon | Team: Team Zenith
 
 ---
 
