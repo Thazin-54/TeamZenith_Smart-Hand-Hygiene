@@ -1,0 +1,276 @@
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
+
+// ── WiFi Credentials ──────────────────────────
+#define WIFI_SSID     "thaz"
+#define WIFI_PASSWORD "987654321"
+
+// ── Firebase Credentials ──────────────────────
+#define API_KEY      "AIzaSyBB2Do-H06G0XfG9hlkJJ-Ay6pqmszH7Y8"
+#define DATABASE_URL "https://smart-hand-hygiene-tracker1-default-rtdb.asia-southeast1.firebasedatabase.app/"
+
+// ── Pin Definitions ───────────────────────────
+#define PIR_PIN    27   // PIR Motion Sensor OUT → HIGH = motion detected
+#define IR_PIN     4    // IR Proximity Sensor  → LOW  = dispenser pressed
+#define RED_LED    2    // Violation indicator
+#define GREEN_LED  18   // Compliant indicator
+
+// ── Constants ─────────────────────────────────
+const int COMPLIANCE_WINDOW_MS = 10000; // 10 sec to sanitize after PIR triggers
+const int PIR_COOLDOWN_MS      = 5000;  // 5 sec cooldown after each cycle
+
+// ── Firebase Objects ──────────────────────────
+FirebaseData fbdo;
+FirebaseData fbdo2;
+FirebaseAuth auth;
+FirebaseConfig config;
+bool signupOK = false;
+
+// ── State Variables ───────────────────────────
+bool motionDetected    = false;
+unsigned long motionTime    = 0;
+unsigned long lastCycleTime = 0;
+int totalEntries   = 0;
+int compliantCount = 0;
+
+// ══════════════════════════════════════════════
+//  Firebase: push event log + update summary
+// ══════════════════════════════════════════════
+void pushEventToFirebase(String type) {
+  if (!Firebase.ready() || !signupOK) return;
+
+  float rate = totalEntries > 0
+               ? (compliantCount * 100.0 / totalEntries)
+               : 0.0;
+
+  // ── /summary node ────────────────────────
+  Firebase.RTDB.setInt   (&fbdo2, "/summary/totalEntries",   totalEntries);
+  Firebase.RTDB.setInt   (&fbdo2, "/summary/compliantCount", compliantCount);
+  Firebase.RTDB.setInt   (&fbdo2, "/summary/violations",     totalEntries - compliantCount);
+  Firebase.RTDB.setFloat (&fbdo2, "/summary/complianceRate", rate);
+  Firebase.RTDB.setString(&fbdo2, "/summary/lastStatus",     type);
+
+  // ── /events node (append) ────────────────
+  FirebaseJson eventJson;
+  eventJson.set("type",           type);
+  eventJson.set("totalEntries",   totalEntries);
+  eventJson.set("compliantCount", compliantCount);
+  eventJson.set("complianceRate", rate);
+  eventJson.set("timestampMs",    (int)(millis()));
+
+  if (Firebase.RTDB.pushJSON(&fbdo2, "/events", &eventJson)) {
+    Serial.println("📤 Firebase updated: " + type);
+  } else {
+    Serial.println("❌ Firebase push failed: " + fbdo2.errorReason());
+  }
+}
+
+// ══════════════════════════════════════════════
+//  Print Summary to Serial
+// ══════════════════════════════════════════════
+void printSummary() {
+  float rate = totalEntries > 0
+               ? (compliantCount * 100.0 / totalEntries)
+               : 0.0;
+
+  Serial.println("----------------------------------------");
+  Serial.printf("Total Entries  : %d\n",     totalEntries);
+  Serial.printf("Compliant      : %d\n",     compliantCount);
+  Serial.printf("Violations     : %d\n",     totalEntries - compliantCount);
+  Serial.printf("Compliance Rate: %.1f%%\n", rate);
+  Serial.println("----------------------------------------");
+  Serial.println("Waiting for next person...");
+}
+
+// ══════════════════════════════════════════════
+//  Log Event → LED + Firebase + Serial
+// ══════════════════════════════════════════════
+void logEvent(String type) {
+
+  if (type == "COMPLIANT") {
+    // ── Compliant ──────────────────────────
+    compliantCount++;
+    digitalWrite(GREEN_LED, HIGH);
+    delay(1000);
+    digitalWrite(GREEN_LED, LOW);
+
+    Serial.println("✓ Hands sanitized successfully!");
+    Serial.println("Thank you for keeping the ward safe.");
+
+    pushEventToFirebase("COMPLIANT");
+
+  } else {
+    // ── Violation ──────────────────────────
+    digitalWrite(RED_LED, HIGH);
+    Serial.println("✗ WARNING: Hands NOT sanitized!");
+    Serial.println("Violation recorded. Please sanitize immediately.");
+    Serial.println("Waiting for late sanitization...");
+
+    // Push violation immediately
+    pushEventToFirebase("VIOLATION");
+
+    // Block until late sanitization
+    while (digitalRead(IR_PIN) != LOW) {
+      delay(100);
+    }
+
+    // Late sanitization confirmed
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+    delay(1000);
+    digitalWrite(GREEN_LED, LOW);
+
+    Serial.println("✓ Late sanitization detected!");
+    Serial.println("Next cycle starting now.");
+
+    // Update Firebase with late status
+    Firebase.RTDB.setString(&fbdo2, "/summary/lastStatus", "LATE_COMPLIANT");
+
+    FirebaseJson lateJson;
+    lateJson.set("type",        "LATE_COMPLIANT");
+    lateJson.set("timestampMs", (int)(millis()));
+    Firebase.RTDB.pushJSON(&fbdo2, "/events", &lateJson);
+  }
+
+  printSummary();
+  lastCycleTime = millis(); // start cooldown
+}
+
+// ══════════════════════════════════════════════
+//  SETUP
+// ══════════════════════════════════════════════
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(PIR_PIN,   INPUT);
+  pinMode(IR_PIN,    INPUT);
+  pinMode(RED_LED,   OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+
+  digitalWrite(RED_LED,   LOW);
+  digitalWrite(GREEN_LED, LOW);
+
+  Serial.println("========================================");
+  Serial.println("   HAI Hand Hygiene Tracker Ready!");
+  Serial.println("   PIR Sensor Active — Monitoring...");
+  Serial.println("========================================");
+
+  // ── Warmup PIR (needs 30–60 sec to stabilize) ──
+  Serial.println("⏳ Warming up PIR sensor (30 seconds)...");
+  for (int i = 30; i > 0; i--) {
+    Serial.printf("   %d seconds remaining...\n", i);
+
+    // Blink green slowly during warmup
+    digitalWrite(GREEN_LED, HIGH);
+    delay(500);
+    digitalWrite(GREEN_LED, LOW);
+    delay(500);
+  }
+  Serial.println("✅ PIR Sensor Ready!");
+
+  // ── Connect WiFi ──────────────────────────
+  WiFi.disconnect(true);
+  delay(1000);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+    if (attempts > 40) {
+      Serial.println("\n❌ WiFi Failed! Restarting...");
+      delay(2000);
+      ESP.restart();
+    }
+  }
+  Serial.println("\n✅ Connected to WiFi!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // ── Firebase Setup ────────────────────────
+  config.api_key      = API_KEY;
+  config.database_url = DATABASE_URL;
+
+  fbdo.setResponseSize(4096);
+  fbdo2.setResponseSize(4096);
+  config.timeout.serverResponse = 10 * 1000;
+  config.token_status_callback  = tokenStatusCallback;
+
+  if (Firebase.signUp(&config, &auth, "", "")) {
+    Serial.println("✅ Firebase sign-up OK!");
+    signupOK = true;
+
+    // Initialize summary
+    Firebase.RTDB.setInt   (&fbdo2, "/summary/totalEntries",   0);
+    Firebase.RTDB.setInt   (&fbdo2, "/summary/compliantCount", 0);
+    Firebase.RTDB.setInt   (&fbdo2, "/summary/violations",     0);
+    Firebase.RTDB.setFloat (&fbdo2, "/summary/complianceRate", 0.0);
+    Firebase.RTDB.setString(&fbdo2, "/summary/lastStatus",     "IDLE");
+
+  } else {
+    Serial.printf("❌ Firebase sign-up failed: %s\n",
+                  config.signer.signupError.message.c_str());
+  }
+
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  Serial.println("========================================");
+  Serial.println("   System Ready! Stand by...");
+  Serial.println("========================================");
+}
+
+// ══════════════════════════════════════════════
+//  LOOP
+// ══════════════════════════════════════════════
+void loop() {
+
+  // ── Cooldown between cycles ────────────────
+  if (millis() - lastCycleTime < PIR_COOLDOWN_MS) {
+    delay(100);
+    return;
+  }
+
+  int pirState = digitalRead(PIR_PIN); // HIGH = motion
+
+  // ── Step 1: PIR detects person ─────────────
+  if (pirState == HIGH && !motionDetected) {
+    motionDetected = true;
+    motionTime     = millis();
+    totalEntries++;
+
+    Serial.println("----------------------------------------");
+    Serial.println("🚶 Person detected by PIR sensor!");
+    Serial.println("Please sanitize your hands...");
+    Serial.printf("You have %d seconds to sanitize.\n",
+                  COMPLIANCE_WINDOW_MS / 1000);
+
+    // Notify Firebase — person detected
+    if (Firebase.ready() && signupOK) {
+      Firebase.RTDB.setString(&fbdo2, "/summary/lastStatus", "PERSON_DETECTED");
+      Firebase.RTDB.setInt   (&fbdo2, "/summary/totalEntries", totalEntries);
+    }
+  }
+
+  // ── Step 2: Check within compliance window ──
+  if (motionDetected) {
+
+    // IR LOW = sanitizer dispenser pressed ✅
+    if (digitalRead(IR_PIN) == LOW) {
+      logEvent("COMPLIANT");
+      motionDetected = false;
+
+    // Timeout — no sanitization ❌
+    } else if (millis() - motionTime >= COMPLIANCE_WINDOW_MS) {
+      logEvent("VIOLATION");
+      motionDetected = false;
+    }
+  }
+
+  delay(100);
+}
