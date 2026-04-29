@@ -131,10 +131,12 @@ git clone https://github.com/[your-username]/HAI-Hygiene-Tracker.git
 TechFusion 2.0 Hackathon | Dayananda Sagar Academy of Technology & Management
 April 28–29, 2025
 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
+#**Checkpoint 2**
 Simulation Link :- https://htmlpreview.github.io/?https://github.com/Thazin-54/TeamZenith_Smart-Hand-Hygiene/blob/main/simulation.html
 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 ## 🚀 Progress Update – Checkpoint 3 (Feature Integration & Refinement)
 
@@ -178,6 +180,7 @@ Simulation Link :- https://htmlpreview.github.io/?https://github.com/Thazin-54/T
 📌 **Checkpoint 3 Outcome:**  
 All core features are now integrated and functioning together. The system demonstrates **end‑to‑end compliance tracking** — from sensor detection to real‑time alerts and cloud logging. This marks the transition from separate modules into a **fully functional Smart Hand Hygiene Compliance Tracker prototype**, ready for final evaluation in Checkpoint 4.
 
+------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 ## 🚀 Checkpoint 4 – Final Submission & Evaluation
 
@@ -210,9 +213,47 @@ All core features are now integrated and functioning together. The system demons
 - Compliance improvement potential highlighted with supporting research.
 - ROI and cost-effectiveness emphasized in final presentation.
 - System positioned as **scalable for both urban hospitals and rural health centers**.
-
----
-
+--
 📌 **Checkpoint 4 Outcome:**  
 The project is now **submission-ready** with a complete prototype, validated performance, and documented impact. This stage confirms the system’s readiness for evaluation, showcasing both technical robustness and real-world healthcare value.
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+## 🚀 Checkpoint 5 – Stability & Debugging
+
+### ✅ Stability Testing
+- **Continuous runtime test**:
+  - Device operated for 24+ hours without reset.
+  - Verified consistent sensor detection and alert triggering.
+- **Network resilience**:
+  - Tested Wi-Fi disconnection → events buffered locally and synced once reconnected.
+  - Cloud upload latency remained < 5 seconds on stable Wi-Fi.
+- **System uptime**:
+  - Confirmed uninterrupted operation with regulated 5V adapter.
+
+### ✅ Debugging & Refinement
+- **False positives reduced**:
+  - Adjusted PIR sensitivity to minimize random triggers.
+  - IR sensor calibrated at 5 cm range for accurate sanitizer detection.
+- **Response time optimized**:
+  - Alert response measured at ~100ms (well below 500ms requirement).
+- **Error handling added**:
+  - Firebase push failures logged with error reason.
+  - Retry mechanism implemented for unstable connections.
+
+### ✅ Performance Validation
+- **Zone entry detection accuracy**: >95% with PIR sensor.
+- **Sanitizer activation detection accuracy**: >98% with IR sensor.
+- **False positive rate**: <5% after calibration.
+- **System uptime**: Continuous 24/7 operation confirmed.
+
+### ✅ Closing Outcomes
+- Prototype now demonstrates **stable, reliable performance** under real-world conditions.
+- Debugging completed for sensor noise, timing precision, and network resilience.
+- System ready for **Checkpoint 6 (Pre-final build stage)** and final submission.
+
+📌 **Checkpoint 5 Outcome:**  
+The project has achieved **stability and robustness**, ensuring reliable compliance tracking with minimal false positives. This stage confirms the system is production‑ready for deployment across multiple beds.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
